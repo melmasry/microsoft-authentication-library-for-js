@@ -71,7 +71,18 @@ export async function loadExternalTokens(
 ): Promise<AuthenticationResult> {
     BrowserUtils.blockNonBrowserEnvironment();
 
-    const responseSnapshot = { ...response };
+    const responseSnapshot: ExternalTokenResponse = {
+        token_type: response.token_type,
+        scope: response.scope,
+        expires_in: response.expires_in,
+        ext_expires_in: response.ext_expires_in,
+        id_token: response.id_token,
+        refresh_token: response.refresh_token,
+        refresh_token_expires_in: response.refresh_token_expires_in,
+        foci: response.foci,
+        access_token: response.access_token,
+        client_info: response.client_info,
+    };
     const browserConfig = buildConfiguration(config, true);
 
     const correlationId =

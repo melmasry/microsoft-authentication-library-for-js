@@ -241,6 +241,80 @@ describe("TokenCache tests", () => {
                 }
             );
 
+            describe.each(["inherited", "non-enumerable"])(
+                "%s response properties",
+                (propertyKind) => {
+                    function createResponse(readIdToken: () => string) {
+                        class Response implements ExternalTokenResponse {
+                            access_token = testAccessToken;
+                            refresh_token = testRefreshToken;
+                            expires_in = 3600;
+
+                            get id_token() {
+                                return readIdToken();
+                            }
+                        }
+
+                        const response = new Response();
+                        if (propertyKind === "non-enumerable") {
+                            Object.defineProperty(response, "id_token", {
+                                get: readIdToken,
+                                enumerable: false,
+                            });
+                        }
+                        return response;
+                    }
+
+                    it("imports the valid ID token using one property read", async () => {
+                        const readIdToken = jest
+                            .fn()
+                            .mockReturnValueOnce(testIdToken)
+                            .mockReturnValue("malformed");
+                        const write = jest.spyOn(
+                            BrowserCacheManager.prototype,
+                            "setIdTokenCredential"
+                        );
+                        const result = await loadExternalTokens(
+                            configuration,
+                            request,
+                            createResponse(readIdToken),
+                            {}
+                        );
+                        expect(readIdToken).toHaveBeenCalledTimes(1);
+                        expect(result.idToken).toBe(testIdToken);
+                        expect(result.idTokenClaims).toEqual(testIdTokenClaims);
+                        expect(write).toHaveBeenCalledWith(
+                            expect.objectContaining({ secret: testIdToken }),
+                            expect.anything(),
+                            false
+                        );
+                    });
+
+                    it("rejects a malformed ID token before importing other tokens", async () => {
+                        const readIdToken = jest.fn().mockReturnValue("");
+                        const initialize = jest.spyOn(
+                            BrowserCacheManager.prototype,
+                            "initialize"
+                        );
+                        const before = { ...window.sessionStorage };
+                        await expect(
+                            loadExternalTokens(
+                                configuration,
+                                request,
+                                createResponse(readIdToken),
+                                {}
+                            )
+                        ).rejects.toMatchObject({
+                            errorCode: ClientAuthErrorCodes.nullOrEmptyToken,
+                            correlationId: request.correlationId,
+                        });
+                        expect(readIdToken).toHaveBeenCalledTimes(1);
+                        expect(initialize).not.toHaveBeenCalled();
+                        expect({ ...window.sessionStorage }).toEqual(before);
+                    });
+                }
+            );
+
             it("writes the validated ID token when the caller mutates the response during initialization", async () => {
                 let resume!: () => void;
                 const gate = new Promise<void>((resolve) => {
