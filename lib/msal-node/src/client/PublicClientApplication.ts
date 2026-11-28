@@ -117,6 +117,9 @@ export class PublicClientApplication
         const validRequest: CommonDeviceCodeRequest = {
             ...request,
             ...(await this.initializeBaseRequest(request)),
+            get cancel() {
+                return request.cancel;
+            },
         };
         const serverTelemetryManager = this.initializeServerTelemetryManager(
             ApiId.acquireTokenByDeviceCode,

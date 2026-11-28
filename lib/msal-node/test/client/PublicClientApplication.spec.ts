@@ -244,6 +244,54 @@ describe("PublicClientApplication", () => {
         await authApp.acquireTokenByDeviceCode(request);
     });
 
+    test("device-code acquisition honors cancellation from the original request", async () => {
+        const { DeviceCodeClient: RealDeviceCodeClient } = jest.requireActual<
+            typeof import("../../src/client/DeviceCodeClient.js")
+        >("../../src/client/DeviceCodeClient.js");
+        jest.mocked(DeviceCodeClient).mockImplementationOnce(
+            (config) => new RealDeviceCodeClient(config)
+        );
+        const sendPost = jest
+            .spyOn(HttpClient.prototype, "sendPostRequestAsync")
+            .mockRejectedValue(new Error("Unexpected token polling request"))
+            .mockResolvedValueOnce({
+                headers: {},
+                body: {
+                    user_code: DEVICE_CODE_RESPONSE.userCode,
+                    device_code: DEVICE_CODE_RESPONSE.deviceCode,
+                    verification_uri: DEVICE_CODE_RESPONSE.verificationUri,
+                    expires_in: DEVICE_CODE_RESPONSE.expiresIn,
+                    interval: DEVICE_CODE_RESPONSE.interval,
+                    message: DEVICE_CODE_RESPONSE.message,
+                },
+                status: 200,
+            });
+        const request: DeviceCodeRequest = {
+            scopes: TEST_CONSTANTS.DEFAULT_GRAPH_SCOPE,
+            correlationId: TEST_CONFIG.CORRELATION_ID,
+            cancel: false,
+            deviceCodeCallback: () => {
+                request.cancel = true;
+            },
+        };
+        const authApp = new PublicClientApplication({
+            auth: {
+                ...appConfig.auth,
+                authorityMetadata: JSON.stringify(
+                    DEFAULT_OPENID_CONFIG_RESPONSE.body
+                ),
+            },
+        });
+
+        await expect(
+            authApp.acquireTokenByDeviceCode(request)
+        ).rejects.toMatchObject({
+            errorCode: "device_code_polling_cancelled",
+            correlationId: request.correlationId,
+        });
+        expect(sendPost).toHaveBeenCalledTimes(1);
+    });
+
     test("acquireTokenByCode", async () => {
         const request: AuthorizationCodeRequest = {
             scopes: TEST_CONSTANTS.DEFAULT_GRAPH_SCOPE,
